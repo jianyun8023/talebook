@@ -11,6 +11,7 @@ import time
 from collections import defaultdict
 from gettext import gettext as _
 
+import meilisearch
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import func as sql_func
 from tornado import web
@@ -55,7 +56,7 @@ def js(func):
 
             logging.error(traceback.format_exc())
             msg = (
-                'Exception:<br><pre style="white-space:pre-wrap;word-break:keep-all">%s</pre>' % traceback.format_exc()
+                    'Exception:<br><pre style="white-space:pre-wrap;word-break:keep-all">%s</pre>' % traceback.format_exc()
             )
             rsp = {"err": "exception", "msg": msg}
             if isinstance(e, web.Finish):
@@ -377,12 +378,15 @@ class BaseHandler(web.RequestHandler):
         self.write(self.render_string(template, **vals))
 
     def get_book(self, book_id):
+
+        # An index is where the documents are stored.
         books = self.get_books(ids=[int(book_id)])
         if not books:
             self.write({"err": "not_found", "msg": _(u"抱歉，这本书不存在")})
             self.set_status(200)
             raise web.Finish()
         return books[0]
+        # return document
 
     def is_book_owner(self, book_id, user_id):
         auto = int(CONF.get("auto_login", 0))
@@ -394,10 +398,37 @@ class BaseHandler(web.RequestHandler):
         query = query.filter(Item.collector_id == user_id)
         return query.count() > 0
 
+    def get_page_param(self):
+        start = self.get_argument_start()
+        try:
+            size = int(self.get_argument("size"))
+        except:
+            size = 60
+        delta = min(max(size, 60), 100)
+        return start, delta
+
     def get_books(self, *args, **kwargs):
         _ts = time.time()
-        books = self.db.get_data_as_dict(*args, **kwargs)
-        logging.debug(
+        logging.info("xxxxxxxxxxxxxxxxxxxxxxx-" + str(kwargs['ids']))
+        f = ""
+        for id in kwargs['ids']:
+            f += "id=" + str(id) + " OR "
+            logging.info("xxxxxxxxx-" + str(id))
+
+        document = self.index_search().search("", {
+            "sort": ["id:desc"],
+            "filter": f.removesuffix("OR ")
+        })
+        books = document['hits']
+        for book in books:
+            book["formats"][0] = str(book["formats"][0]).replace("/data/book/calibre/library/", CONF["with_library"])
+            # book['files'] = [{
+            #     "format": "EPUB",
+            #     "href": "",
+            #     "size": book["size"]
+            # }]
+        # books = self.db.get_data_as_dict(*args, **kwargs)
+        logging.info(
             "[%5d ms] select books from library  (count = %d)" % (int(1000 * (time.time() - _ts)), len(books))
         )
 
@@ -417,7 +448,16 @@ class BaseHandler(web.RequestHandler):
         logging.debug(
             "[%5d ms] select books from database (count = %d)" % (int(1000 * (time.time() - _ts)), len(books))
         )
+
         return books
+
+    def index_search(self):
+        if CONF['meili_search_key']:
+            client = meilisearch.Client(CONF['meili_search_url'], CONF['meili_search_key'])
+        else:
+            client = meilisearch.Client(CONF['meili_search_url'])
+        index = client.index("books")
+        return index
 
     def count_increase(self, book_id, **kwargs):
         try:
@@ -452,10 +492,10 @@ class BaseHandler(web.RequestHandler):
         name_column = "A.rating as name" if field in ["rating"] else "A.name"
         args = {"table": table, "field": field, "name_column": name_column}
         sql = (
-            """SELECT A.id, %(name_column)s, count(distinct book) as count
+                """SELECT A.id, %(name_column)s, count(distinct book) as count
             FROM %(table)s as A left join books_%(table)s_link as B
             on A.id = B.%(field)s group by A.id"""
-            % args
+                % args
         )
         logging.debug(sql)
         rows = self.cache.backend.conn.get(sql)
@@ -563,13 +603,13 @@ class ListHandler(BaseHandler):
         if ids:
             ids = list(ids)
             count = len(ids)
-            books = self.get_books(ids=ids[start : start + delta])
+            books = self.get_books(ids=ids[start: start + delta])
             if sort_by_id:
                 # 归一化，按照id从大到小排列。
                 self.do_sort(books, "id", False)
         else:
             count = len(all_books)
-            books = all_books[start : start + delta]
+            books = all_books[start: start + delta]
         return {
             "err": "ok",
             "title": title,

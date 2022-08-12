@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
+import logging
 import math
 import sys
 from functools import cmp_to_key
 from gettext import gettext as _
+
+import meilisearch
 
 from webserver import utils
 from webserver.handlers.base import ListHandler, js
@@ -62,6 +65,7 @@ class MetaList(ListHandler):
 
 
 class MetaBooks(ListHandler):
+    @js
     def get(self, meta, name):
         titles = {
             "tag": _(u'含有"%(name)s"标签的书籍'),
@@ -74,6 +78,58 @@ class MetaBooks(ListHandler):
         category = meta + "s" if meta in ["tag", "author"] else meta
         if meta in ["rating"]:
             name = int(name)
+        client = meilisearch.Client('http://192.168.2.4:7700')
+        start, size = self.get_page_param()
+        if meta == "tag":
+
+            document = client.index("books").search("", {
+                "limit": size,
+                "offset": start,
+                "sort": ["id:desc"],
+                "filter": "tags = " + name
+            })
+
+            count = document["estimatedTotalHits"]
+            books = document['hits']
+            return {
+                "err": "ok",
+                "title": title,
+                "total": count,
+                "books": [self.fmt(b) for b in books],
+            }
+        elif meta == "author":
+            document = client.index("books").search("", {
+                "limit": size,
+                "offset": start,
+                "sort": ["id:desc"],
+                "filter": "authors = " + name
+            })
+
+            count = document["estimatedTotalHits"]
+            books = document['hits']
+            return {
+                "err": "ok",
+                "title": title,
+                "total": count,
+                "books": [self.fmt(b) for b in books],
+            }
+        elif meta == "publisher":
+            document = client.index("books").search("", {
+                "limit": size,
+                "offset": start,
+                "sort": ["id:desc"],
+                "filter": "publisher = " + name
+            })
+
+            count = document["estimatedTotalHits"]
+            books = document['hits']
+            return {
+                "err": "ok",
+                "title": title,
+                "total": count,
+                "books": [self.fmt(b) for b in books],
+            }
+
         books = self.get_item_books(category, name)
         books.sort(key=cmp_to_key(utils.compare_books_by_rating_or_id), reverse=True)
         return self.render_book_list(books, title=title)

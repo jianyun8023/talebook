@@ -3,6 +3,7 @@
 
 
 import datetime
+import os
 from gettext import gettext as _
 
 
@@ -31,17 +32,18 @@ class SimpleBookFormatter:
 
     def format(self):
         b = self.book
-        b["ts"] = b["timestamp"].strftime("%s")
+        if b["timestamp"]:
+            b["ts"] = datetime.datetime.strptime(str(b["timestamp"]), '%Y-%m-%dT%H:%M:%S+00:00').strftime("%s")
         return {
             "id": b["id"],
             "title": b["title"],
-            "rating": b["rating"],
+            "rating": 1,
             "timestamp": self.val("timestamp"),
             "pubdate": self.val("pubdate"),
-            "author": ", ".join(b["authors"]),
-            "authors": b["authors"],
+            "author": ", ".join(str(b["authors"]).split(" ")),
+            "authors": str(b["authors"]).split(" "),
             "author_sort": self.val("author_sort"),
-            "tag": " / ".join(b["tags"]),
+            "tag": " / ".join(str(b["tags"]).split(" ")),
             "tags": b["tags"],
             "publisher": self.val("publisher"),
             "comments": self.val("comments", _(u"暂无简介")),
@@ -68,15 +70,16 @@ class BookFormatter:
     def get_files(self):
         files = []
         book_id = self.book["id"]
-        for fmt in self.book.get("available_formats", ""):
+        for fmt in self.book.get("formats", ""):
             try:
-                filesize = self.db.sizeof_format(book_id, fmt, index_is_id=True)
+                filesize = self.book["size"]
             except:
                 continue
+            format = (os.path.splitext(fmt)[-1][1:]).upper()
             item = {
-                "format": fmt,
+                "format": format,
                 "size": filesize,
-                "href": self.cdn_url + "/api/book/%s.%s" % (book_id, fmt),
+                "href": self.cdn_url + "/api/book/%s.%s" % (book_id, format),
             }
             files.append(item)
         return files

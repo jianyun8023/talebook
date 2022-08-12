@@ -81,6 +81,7 @@ class Index(BaseHandler):
         if not ids:
             raise web.HTTPError(404, reason=_(u"本书库暂无藏书"))
         random_ids = random.sample(ids, min(cnt_random, len(ids)))
+        logging.info("xxxxxxxxxxxxxxxxxxx-" + str(random_ids))
         random_books = [b for b in self.get_books(ids=random_ids) if b["cover"]]
         random_books.sort(key=lambda x: x["id"], reverse=True)
 
@@ -285,7 +286,8 @@ class BookEdit(BaseHandler):
         if data.get("pubdate", None):
             content = douban.str2date(data["pubdate"])
             if content is None:
-                return {"err": "params.pudate.invalid", "msg": _(u"出版日期参数错误，格式应为 2019-05-10或2019-05或2019年或2019")}
+                return {"err": "params.pudate.invalid",
+                        "msg": _(u"出版日期参数错误，格式应为 2019-05-10或2019-05或2019年或2019")}
             mi.set("pubdate", content)
 
         if "tags" in data and not data["tags"]:
@@ -312,6 +314,7 @@ class BookDelete(BaseHandler):
             return {"err": "permission", "msg": _(u"无权操作")}
 
         self.db.delete_book(bid)
+        self.index_search().delete_document(bid)
         self.add_msg("success", _(u"删除书籍《%s》") % book["title"])
         return {"err": "ok", "msg": _(u"删除成功")}
 
@@ -343,9 +346,10 @@ class BookDownload(BaseHandler):
         book_id = book["id"]
         self.user_history("download_history", book)
         self.count_increase(book_id, count_download=1)
-        if "fmt_%s" % fmt not in book:
+        if not book["formats"]:
             raise web.HTTPError(404, reason=_(u"%s格式无法下载" % fmt))
-        path = book["fmt_%s" % fmt]
+
+        path = book["formats"][0]
         book["fmt"] = fmt
         book["title"] = urllib.parse.quote_plus(book["title"])
         fname = "%(id)d-%(title)s.%(fmt)s" % book
@@ -371,21 +375,49 @@ class BookNav(ListHandler):
 
 
 class RecentBook(ListHandler):
+    @js
     def get(self):
         title = _(u"新书推荐")
-        ids = self.books_by_id()
-        return self.render_book_list([], ids=ids, title=title, sort_by_id=True)
+
+        start, size = self.get_page_param()
+        document = self.index_search().search("", {
+            "limit": size,
+            "offset": start,
+            "sort": ["id:desc"]
+        })
+
+        count = document["estimatedTotalHits"]
+        books = document['hits']
+        return {
+            "err": "ok",
+            "title": title,
+            "total": count,
+            "books": [self.fmt(b) for b in books],
+        }
 
 
 class SearchBook(ListHandler):
+    @js
     def get(self):
         name = self.get_argument("name", "")
         if not name.strip():
             return self.write({"err": "params.invalid", "msg": _(u"请输入搜索关键字")})
-
+        start, size = self.get_page_param()
         title = _(u"搜索：%(name)s") % {"name": name}
-        ids = self.cache.search(name)
-        return self.render_book_list([], ids=ids, title=title)
+        document = self.index_search().search(name, {
+            "limit": size,
+            "offset": start,
+            "sort": ["id:desc"]
+        })
+
+        count = document["estimatedTotalHits"]
+        books = document['hits']
+        return {
+            "err": "ok",
+            "title": title,
+            "total": count,
+            "books": [self.fmt(b) for b in books],
+        }
 
 
 class HotBook(ListHandler):
@@ -490,7 +522,7 @@ class BookRead(BaseHandler):
 
         # check format
         for fmt in ["epub", "mobi", "azw", "azw3", "txt"]:
-            fpath = book.get("fmt_%s" % fmt, None)
+            fpath = book["formats"][0]
             if not fpath:
                 continue
             # epub_dir is for javascript
@@ -588,7 +620,7 @@ class BookPush(BaseHandler):
         self.user_history("push_history", book)
         self.count_increase(book_id, count_download=1)
 
-        #https://www.amazon.cn/gp/help/customer/display.html?ref_=hp_left_v4_sib&nodeId=G5WYD9SAF7PGXRNA
+        # https://www.amazon.cn/gp/help/customer/display.html?ref_=hp_left_v4_sib&nodeId=G5WYD9SAF7PGXRNA
         for fmt in ["epub", "pdf"]:
             fpath = book.get("fmt_%s" % fmt, None)
             if fpath:
@@ -615,7 +647,7 @@ class BookPush(BaseHandler):
 
     @background
     def bg_convert_and_send(self, book, mail_to):
-        #https://www.amazon.cn/gp/help/customer/display.html?ref_=hp_left_v4_sib&nodeId=G5WYD9SAF7PGXRNA
+        # https://www.amazon.cn/gp/help/customer/display.html?ref_=hp_left_v4_sib&nodeId=G5WYD9SAF7PGXRNA
         fmt = "epub"  # best format for kindle
         fpath = self.convert_to_mobi_format(book, fmt)
         if fpath:
