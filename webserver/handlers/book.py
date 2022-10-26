@@ -82,12 +82,12 @@ class Index(BaseHandler):
             raise web.HTTPError(404, reason=_(u"本书库暂无藏书"))
         random_ids = random.sample(ids, min(cnt_random, len(ids)))
         logging.info("xxxxxxxxxxxxxxxxxxx-" + str(random_ids))
-        random_books = [b for b in self.get_books(ids=random_ids) if b["cover"]]
+        random_books = [b for b in self.get_books(ids=random_ids) if b.get("cover")]
         random_books.sort(key=lambda x: x["id"], reverse=True)
 
         ids.sort(reverse=True)
         new_ids = random.sample(ids[0:100], min(cnt_recent, len(ids)))
-        new_books = [b for b in self.get_books(ids=new_ids) if b["cover"]]
+        new_books = [b for b in self.get_books(ids=new_ids) if b.get("cover")]
         new_books.sort(key=lambda x: x["id"], reverse=True)
 
         return {
