@@ -7,7 +7,7 @@
                 </v-btn>
                 {{card.title}}
             </v-card-title>
-    
+
             <v-card-text v-show="card.show">
                 <p v-if="card.subtitle" class="">{{card.subtitle}}</p>
 

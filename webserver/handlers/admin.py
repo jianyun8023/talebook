@@ -257,6 +257,9 @@ class AdminSettings(BaseHandler):
             "settings_path",
             "avatar_service",
             "google_analytics_id",
+            "meili_search_url",
+            "meili_search_key",
+            "meili_search_index",
         ]
 
         args = loader.SettingsLoader()

@@ -1,15 +1,16 @@
 .PHONY: all build push test
 
 VER := $(shell git branch --show-current)
-IMAGE := talebook/talebook:$(VER)
-REPO1 := talebook/talebook:latest
-REPO2 := talebook/calibre-webserver:latest
+#IMAGE := ghcr.io/jianyun8023/talebook:$(VER)
+IMAGE := ghcr.io/jianyun8023/talebook:latest
+#REPO1 := talebook/talebook:latest
+#REPO2 := talebook/calibre-webserver:latest
 
 all: build up
 
 build:
 	docker build --no-cache=false --build-arg BUILD_COUNTRY=CN --build-arg GIT_VERSION=$(VER) \
-		-f Dockerfile -t $(IMAGE) -t $(REPO1) -t $(REPO2) .
+		-f Dockerfile -t $(IMAGE) .
 
 push:
 	docker push $(IMAGE)

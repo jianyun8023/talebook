@@ -422,6 +422,7 @@ class BaseHandler(web.RequestHandler):
         books = document['hits']
         for book in books:
             book["formats"][0] = str(book["formats"][0]).replace("/data/book/calibre/library/", CONF["with_library"])
+            book["fmt_epub"] = str(book["formats"][0]).replace("/data/book/calibre/library/", CONF["with_library"])
             # book['files'] = [{
             #     "format": "EPUB",
             #     "href": "",
